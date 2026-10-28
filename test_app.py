@@ -8,6 +8,12 @@ Tests cover:
 - Input validation and rejection of invalid reviews
 - Review list rendering and content display
 - Filter and statistics calculation logic
+- Version 2 (V2) Edit/Modify Review feature:
+  - Form rendering with existing details
+  - Successful updates
+  - Field validation on edits
+  - 404 for non-existent reviews
+  - Exclusion from V1 and V3 (preserving backward/forward version isolation)
 """
 
 import pytest
@@ -18,15 +24,17 @@ import app as app_module
 def client():
     """Create a fresh test client with test configuration."""
     app_module.app.config["TESTING"] = True
-    # Save a backup of initial reviews to maintain test isolation
+    # Save a backup of initial reviews and version to maintain test isolation
     initial_reviews_backup = [dict(r) for r in app_module.reviews]
+    initial_version = app_module.APP_VERSION
 
     with app_module.app.test_client() as test_client:
         yield test_client
 
-    # Restore initial reviews state after test
+    # Restore initial state after test
     app_module.reviews.clear()
     app_module.reviews.extend(initial_reviews_backup)
+    app_module.APP_VERSION = initial_version
 
 
 def test_home_page_returns_200(client):
@@ -136,3 +144,101 @@ def test_statistics_calculation_accuracy():
     assert stats["distribution"][5] == 2
     assert stats["distribution"][4] == 1
     assert stats["distribution"][2] == 1
+
+
+# ==============================================================================
+# Version 2 (V2) Edit/Modify Feature Tests
+# ==============================================================================
+
+def test_v2_edit_review_page_loads_existing_details(client):
+    """Verify V2 edit page pre-fills existing review details and action buttons."""
+    app_module.APP_VERSION = "v2"
+    response = client.get("/reviews/1/edit")
+    assert response.status_code == 200
+    # Must contain existing details
+    assert b"Aarav Sharma" in response.data
+    assert b"Outstanding system!" in response.data
+    # Must contain Save and Cancel actions
+    assert b"Save Changes" in response.data
+    assert b"Cancel" in response.data
+
+
+def test_v2_edit_review_successful_update(client):
+    """Verify saving edited review immediately updates content and redirects."""
+    app_module.APP_VERSION = "v2"
+    payload = {
+        "name": "Aarav Sharma (Verified)",
+        "rating": "4",
+        "comment": "Updated review comment with modified rating.",
+    }
+    response = client.post("/reviews/1/edit", data=payload)
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+
+    # Check updated values in memory
+    target = next(r for r in app_module.reviews if r["id"] == 1)
+    assert target["name"] == "Aarav Sharma (Verified)"
+    assert target["rating"] == 4
+    assert target["comment"] == "Updated review comment with modified rating."
+
+    # Follow redirect and verify display
+    follow_resp = client.get("/")
+    assert follow_resp.status_code == 200
+    assert b"Aarav Sharma (Verified)" in follow_resp.data
+    assert b"Updated review comment with modified rating." in follow_resp.data
+
+
+def test_v2_edit_review_invalid_inputs_rejected(client):
+    """Verify validation rejects empty names, empty comments, and bad ratings."""
+    app_module.APP_VERSION = "v2"
+
+    # Missing name
+    res1 = client.post("/reviews/1/edit", data={"name": "", "rating": "5", "comment": "Valid"})
+    assert res1.status_code == 400
+    assert b"Name is required" in res1.data
+
+    # Missing comment
+    res2 = client.post("/reviews/1/edit", data={"name": "Valid", "rating": "5", "comment": ""})
+    assert res2.status_code == 400
+    assert b"Comment is required" in res2.data
+
+    # Out of range rating
+    res3 = client.post("/reviews/1/edit", data={"name": "Valid", "rating": "10", "comment": "Valid"})
+    assert res3.status_code == 400
+    assert b"Rating must be an integer between 1 and 5" in res3.data
+
+
+def test_v2_edit_nonexistent_review_returns_404(client):
+    """Verify attempting to edit a non-existent review returns HTTP 404."""
+    app_module.APP_VERSION = "v2"
+    get_res = client.get("/reviews/9999/edit")
+    assert get_res.status_code == 404
+
+    post_res = client.post("/reviews/9999/edit", data={"name": "A", "rating": "5", "comment": "B"})
+    assert post_res.status_code == 404
+
+
+def test_v1_and_v3_edit_feature_disabled_and_unchanged(client):
+    """Verify V1 and V3 do not allow editing and keep existing behaviour unchanged."""
+    # Under V1
+    app_module.APP_VERSION = "v1"
+    v1_get = client.get("/reviews/1/edit")
+    assert v1_get.status_code == 403
+    v1_home = client.get("/")
+    assert b"/reviews/1/edit" not in v1_home.data
+
+    # Under V3
+    app_module.APP_VERSION = "v3"
+    v3_get = client.get("/reviews/1/edit")
+    assert v3_get.status_code == 403
+    v3_home = client.get("/")
+    assert b"/reviews/1/edit" not in v3_home.data
+
+
+def test_v2_home_page_displays_edit_button(client):
+    """Verify V2 displays the Edit button on reviews."""
+    app_module.APP_VERSION = "v2"
+    response = client.get("/")
+    assert response.status_code == 200
+    assert b"Edit" in response.data
+    assert b"/reviews/1/edit" in response.data

@@ -19,7 +19,7 @@ spec:
       containers:
         - name: review-system
           image: mmokshitha/review-system:v2
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           env:
             - name: APP_VERSION
               value: "v2"

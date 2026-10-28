@@ -53,6 +53,7 @@ Each version is visibly distinguishable in browser presentation and functionally
 │ • Live Reviews  │ • Total Reviews Counter  │ • Rating Histogram Bar    │
 │ • /health API   │ • Average Score (/5.0)   │ • Positive Sentiment %    │
 │ • Version Badge │ • 5-Star Volume Tracker  │ • Enhanced Theme Styling  │
+│                 │ • Edit/Modify Reviews    │                           │
 └─────────────────┴──────────────────────────┴───────────────────────────┘
 ```
 
@@ -67,6 +68,7 @@ Each version is visibly distinguishable in browser presentation and functionally
   - Vibrant Emerald Green UI theme.
   - **Dynamic Rating Filter:** Instant client-side / query-based filtering (Show All, 5★, 4★, 3★, 2★, 1★).
   - **Analytics Cards:** Total review count, mathematical average rating (e.g. `4.7 / 5.0`), and 5-star count.
+  - **Edit/Modify Review Feature:** An intuitive Edit button (`✎ Edit`) on each review allowing the user to modify the reviewer name, star rating, and review text with full validation, existing detail pre-filling, immediate in-place updates, and cancel navigation.
 
 - **Version 3 (`v3`):**
   - Royal Violet / Indigo modern UI theme.

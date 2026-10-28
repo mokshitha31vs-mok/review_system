@@ -4,6 +4,11 @@ A lightweight Flask application for collecting, validating, displaying,
 and analyzing user reviews. Built for CI/CD demonstration with Docker,
 Jenkins, and Kubernetes across progressive application versions (V1, V2, V3).
 
+Version Features:
+- V1: Basic submission, input validation, live review feed, /health probe (Classic Blue)
+- V2: Star rating filters, aggregate statistics cards, and Review Editing/Modification (Modern Emerald)
+- V3: Multi-criteria sorting, star distribution histogram, and sentiment metrics (Royal Purple)
+
 Persistence Note:
 Reviews are kept in-memory for fast execution, zero external database setup,
 and idempotent automated testing. State is reset when container restarts.
@@ -172,8 +177,9 @@ def submit_review():
         )
 
     now = datetime.now()
+    new_id = max((r["id"] for r in reviews), default=0) + 1
     new_review = {
-        "id": len(reviews) + 1,
+        "id": new_id,
         "name": name,
         "rating": rating,
         "comment": comment,
@@ -184,6 +190,65 @@ def submit_review():
     reviews.insert(0, new_review)
     flash("Thank you! Your review has been submitted successfully.", "success")
     return redirect(url_for("home"))
+
+
+@app.route("/reviews/<int:review_id>/edit", methods=["GET", "POST"])
+def edit_review(review_id):
+    """
+    V2 Exclusive Feature: Edit/Modify an existing review.
+    Guarded so that V1 and V3 remain unchanged.
+    """
+    if APP_VERSION != "v2":
+        return "Review editing is only supported in Version 2 (V2).", 403
+
+    target_review = next((r for r in reviews if r["id"] == review_id), None)
+    if not target_review:
+        return f"Review #{review_id} not found.", 404
+
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        comment = request.form.get("comment", "").strip()
+        rating_raw = request.form.get("rating", "").strip()
+
+        try:
+            rating = int(rating_raw)
+        except (ValueError, TypeError):
+            rating = 0
+
+        # Validate edited fields
+        if not name or len(name) > 60:
+            return (
+                "Invalid review edit: Name is required and must not exceed 60 characters.",
+                400,
+            )
+
+        if not comment or len(comment) > 500:
+            return (
+                "Invalid review edit: Comment is required and must not exceed 500 characters.",
+                400,
+            )
+
+        if rating not in range(1, 6):
+            return (
+                "Invalid review edit: Rating must be an integer between 1 and 5.",
+                400,
+            )
+
+        # Apply updates
+        target_review["name"] = name
+        target_review["rating"] = rating
+        target_review["comment"] = comment
+        target_review["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        flash("Review updated successfully!", "success")
+        return redirect(url_for("home"))
+
+    # GET request: render the edit review form with pre-filled details
+    return render_template(
+        "edit_review.html",
+        version=APP_VERSION,
+        review=target_review,
+    )
 
 
 @app.route("/health", methods=["GET"])
