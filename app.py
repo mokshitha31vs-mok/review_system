@@ -7,7 +7,7 @@ Jenkins, and Kubernetes across progressive application versions (V1, V2, V3).
 Version Features:
 - V1: Basic submission, input validation, live review feed, /health probe (Classic Blue)
 - V2: Star rating filters, aggregate statistics cards, and Review Editing/Modification (Modern Emerald)
-- V3: Multi-criteria sorting, star distribution histogram, and sentiment metrics (Royal Purple)
+- V3: Multi-criteria sorting, star distribution histogram, sentiment metrics, and Review Deletion (Royal Purple)
 
 Persistence Note:
 Reviews are kept in-memory for fast execution, zero external database setup,
@@ -249,6 +249,31 @@ def edit_review(review_id):
         version=APP_VERSION,
         review=target_review,
     )
+
+
+@app.route("/reviews/<int:review_id>/delete", methods=["POST", "DELETE"])
+def delete_review(review_id):
+    """
+    V3 Exclusive Feature: Delete/Remove an existing review.
+    Guarded so that V1 and V2 remain unchanged.
+    """
+    if APP_VERSION != "v3":
+        return "Review deletion is only supported in Version 3 (V3).", 403
+
+    target_review = next((r for r in reviews if r["id"] == review_id), None)
+    if not target_review:
+        return f"Review #{review_id} not found.", 404
+
+    reviews.remove(target_review)
+    flash("Review deleted successfully!", "success")
+
+    redirect_target = request.form.get("redirect_to")
+    if redirect_target:
+        return redirect(redirect_target)
+    ref = request.referrer or ""
+    if "/reviews" in ref and not ref.endswith("/reviews/"):
+        return redirect(url_for("reviews_page"))
+    return redirect(url_for("home"))
 
 
 @app.route("/health", methods=["GET"])

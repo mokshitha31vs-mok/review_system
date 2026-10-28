@@ -53,7 +53,7 @@ Each version is visibly distinguishable in browser presentation and functionally
 │ • Live Reviews  │ • Total Reviews Counter  │ • Rating Histogram Bar    │
 │ • /health API   │ • Average Score (/5.0)   │ • Positive Sentiment %    │
 │ • Version Badge │ • 5-Star Volume Tracker  │ • Enhanced Theme Styling  │
-│                 │ • Edit/Modify Reviews    │                           │
+│                 │ • Edit/Modify Reviews    │ • Delete/Remove Reviews   │
 └─────────────────┴──────────────────────────┴───────────────────────────┘
 ```
 
@@ -75,6 +75,7 @@ Each version is visibly distinguishable in browser presentation and functionally
   - **Multi-Criteria Sorting:** Sort reviews dynamically by *Newest First*, *Oldest First*, *Highest Rated*, or *Lowest Rated*.
   - **Visual Distribution Bar:** Graphical percentage histogram breakdown for each star level (5★ down to 1★).
   - **Sentiment Metric:** Real-time positive sentiment calculation (percentage of 4★ and 5★ ratings).
+  - **Delete/Remove Review Feature:** A prominent Delete button (`🗑 Delete`) on each review with a browser confirmation modal ("Are you sure you want to delete this review?"). Upon confirmation, permanently deletes the review from the application data store, shows a success flash alert ("Review deleted successfully!"), and dynamically updates all review statistics and histogram distributions. If cancelled, the review is preserved.
 
 ---
 

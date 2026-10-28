@@ -242,3 +242,107 @@ def test_v2_home_page_displays_edit_button(client):
     assert response.status_code == 200
     assert b"Edit" in response.data
     assert b"/reviews/1/edit" in response.data
+
+
+# ==============================================================================
+# Version 3 (V3) Delete/Remove Feature Tests
+# ==============================================================================
+
+def test_v3_delete_button_present_on_pages(client):
+    """Verify V3 displays the Delete button and confirmation message."""
+    app_module.APP_VERSION = "v3"
+    # Home page
+    res_home = client.get("/")
+    assert res_home.status_code == 200
+    assert b"Delete" in res_home.data
+    assert b"/reviews/1/delete" in res_home.data
+    assert b"Are you sure you want to delete this review?" in res_home.data
+
+    # Reviews page
+    res_reviews = client.get("/reviews")
+    assert res_reviews.status_code == 200
+    assert b"Delete" in res_reviews.data
+    assert b"/reviews/1/delete" in res_reviews.data
+
+
+def test_v3_delete_existing_review_removes_from_data_store(client):
+    """Verify deleting a review removes it from memory and displays success message."""
+    app_module.APP_VERSION = "v3"
+    initial_count = len(app_module.reviews)
+    assert any(r["id"] == 1 for r in app_module.reviews)
+
+    # Issue delete request
+    response = client.post("/reviews/1/delete")
+    assert response.status_code == 302
+
+    # Data store verification: review 1 must be permanently removed
+    assert len(app_module.reviews) == initial_count - 1
+    assert not any(r["id"] == 1 for r in app_module.reviews)
+
+    # Follow redirect and verify success message
+    follow_resp = client.get(response.headers["Location"])
+    assert follow_resp.status_code == 200
+    assert b"Review deleted successfully!" in follow_resp.data
+    assert b"Outstanding system!" not in follow_resp.data
+
+
+def test_v3_cancel_confirmation_does_not_delete_review(client):
+    """Verify cancelling confirmation leaves review data untouched."""
+    app_module.APP_VERSION = "v3"
+    initial_count = len(app_module.reviews)
+
+    # When client-side confirmation is cancelled, no POST request is sent
+    # Review #1 remains intact in data store
+    assert len(app_module.reviews) == initial_count
+    assert any(r["id"] == 1 for r in app_module.reviews)
+
+    # Page still displays review #1
+    page = client.get("/")
+    assert page.status_code == 200
+    assert b"Aarav Sharma" in page.data
+
+
+def test_v3_delete_nonexistent_review_returns_404(client):
+    """Verify attempting to delete an invalid/non-existent review returns HTTP 404."""
+    app_module.APP_VERSION = "v3"
+    response = client.post("/reviews/99999/delete")
+    assert response.status_code == 404
+
+
+def test_v3_statistics_and_histogram_update_after_deletion(client):
+    """Verify statistics cards and rating distribution histogram update upon deletion."""
+    app_module.APP_VERSION = "v3"
+    # Seed data has 3 reviews: two 5-star (id:1, id:3), one 4-star (id:2)
+    initial_stats = app_module.calculate_statistics(app_module.reviews)
+    assert initial_stats["total"] == 3
+    assert initial_stats["five_star_count"] == 2
+
+    # Delete review #1 (5-star rating)
+    client.post("/reviews/1/delete")
+
+    # Recalculated statistics
+    new_stats = app_module.calculate_statistics(app_module.reviews)
+    assert new_stats["total"] == 2
+    assert new_stats["five_star_count"] == 1
+    assert new_stats["distribution"][5] == 1
+    assert new_stats["distribution"][4] == 1
+
+
+def test_v1_and_v2_unaffected_by_v3_delete(client):
+    """Verify V1 and V2 reject delete operations and do not display Delete buttons."""
+    # Under V1
+    app_module.APP_VERSION = "v1"
+    v1_post = client.post("/reviews/1/delete")
+    assert v1_post.status_code == 403
+    v1_home = client.get("/")
+    assert b"/reviews/1/delete" not in v1_home.data
+    assert b"btn-delete" not in v1_home.data
+
+    # Under V2: edit is available, delete is rejected
+    app_module.APP_VERSION = "v2"
+    v2_post = client.post("/reviews/1/delete")
+    assert v2_post.status_code == 403
+    v2_home = client.get("/")
+    assert b"/reviews/1/delete" not in v2_home.data
+    assert b"btn-delete" not in v2_home.data
+    assert b"/reviews/1/edit" in v2_home.data
