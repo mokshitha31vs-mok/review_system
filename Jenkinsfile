@@ -8,7 +8,6 @@ pipeline {
     }
 
     stages {
-
         stage('Checkout') {
             steps {
                 checkout scm
@@ -18,27 +17,24 @@ pipeline {
         stage('Check Tools') {
             steps {
                 powershell '''
+                    $ErrorActionPreference = "Stop"
+
                     if (!(Test-Path $env:PYTHON_EXE)) {
-                        throw "Python executable not found: $env:PYTHON_EXE"
+                        throw "Python executable not found at: $env:PYTHON_EXE"
                     }
-
                     if (!(Test-Path $env:DOCKER_EXE)) {
-                        throw "Docker executable not found: $env:DOCKER_EXE"
+                        throw "Docker executable not found at: $env:DOCKER_EXE"
                     }
 
+                    Write-Host "=== Tool Versions ==="
                     & $env:PYTHON_EXE --version
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Python is not working."
-                    }
-
                     & $env:DOCKER_EXE --version
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Docker is not working."
-                    }
+                    kubectl version --client
 
-                    & $env:DOCKER_EXE info
+                    Write-Host "Checking Docker daemon connectivity..."
+                    & $env:DOCKER_EXE info --format "{{.ServerVersion}}"
                     if ($LASTEXITCODE -ne 0) {
-                        throw "Docker daemon is not available."
+                        throw "Docker daemon is not running or accessible."
                     }
                 '''
             }
@@ -47,10 +43,11 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 powershell '''
-                    & $env:PYTHON_EXE -m pip install -r requirements.txt
-
+                    $ErrorActionPreference = "Stop"
+                    Write-Host "Installing project requirements..."
+                    & $env:PYTHON_EXE -m pip install --quiet -r requirements.txt
                     if ($LASTEXITCODE -ne 0) {
-                        throw "Dependency installation failed."
+                        throw "Failed to install Python dependencies from requirements.txt."
                     }
                 '''
             }
@@ -59,27 +56,50 @@ pipeline {
         stage('Run Tests') {
             steps {
                 powershell '''
+                    $ErrorActionPreference = "Stop"
+                    Write-Host "Executing automated pytest test suite..."
                     & $env:PYTHON_EXE -m pytest -v
-
                     if ($LASTEXITCODE -ne 0) {
-                        throw "Automated tests failed."
+                        throw "Pytest automated tests failed."
                     }
                 '''
             }
         }
 
-        stage('Build Docker Images v1 v2 v3') {
+        stage('Build V1 Image') {
             steps {
                 powershell '''
-                    foreach ($version in @("v1", "v2", "v3")) {
+                    $ErrorActionPreference = "Stop"
+                    Write-Host "Building Docker image: $env:IMAGE_NAME:v1"
+                    & $env:DOCKER_EXE build --build-arg "APP_VERSION=v1" -t "$env:IMAGE_NAME`:v1" .
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Docker build failed for version v1."
+                    }
+                '''
+            }
+        }
 
-                        & $env:DOCKER_EXE build `
-                            --build-arg "APP_VERSION=$version" `
-                            -t "$env:IMAGE_NAME`:$version" .
+        stage('Build V2 Image') {
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+                    Write-Host "Building Docker image: $env:IMAGE_NAME:v2"
+                    & $env:DOCKER_EXE build --build-arg "APP_VERSION=v2" -t "$env:IMAGE_NAME`:v2" .
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Docker build failed for version v2."
+                    }
+                '''
+            }
+        }
 
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Docker build failed for $version."
-                        }
+        stage('Build V3 Image') {
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+                    Write-Host "Building Docker image: $env:IMAGE_NAME:v3"
+                    & $env:DOCKER_EXE build --build-arg "APP_VERSION=v3" -t "$env:IMAGE_NAME`:v3" .
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Docker build failed for version v3."
                     }
                 '''
             }
@@ -96,40 +116,54 @@ pipeline {
                     powershell '''
                         $ErrorActionPreference = "Stop"
 
-                        $env:DH_TOKEN |
-                            & $env:DOCKER_EXE login `
-                                --username "mmokshitha" `
-                                --password-stdin
-
-                        if ($LASTEXITCODE -ne 0) {
-                            throw "Docker Hub login failed. Check the dockerhub-token credential and Docker Hub username."
+                        if ([string]::IsNullOrWhiteSpace($env:DH_TOKEN)) {
+                            throw "Docker Hub token is missing or empty in Jenkins credentials (dockerhub-token)."
                         }
 
-                        foreach ($version in @("v1", "v2", "v3")) {
+                        Write-Host "Authenticating with Docker Hub using token credential..."
+                        $cleanToken = $env:DH_TOKEN.Trim()
+                        $cleanToken | & $env:DOCKER_EXE login --username "mmokshitha" --password-stdin
 
-                            Write-Host "Pushing image: $env:IMAGE_NAME`:$version"
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Docker Hub login failed. Verify that dockerhub-token credential contains a valid Read/Write Docker Hub Personal Access Token for username mmokshitha."
+                        }
 
-                            & $env:DOCKER_EXE push "$env:IMAGE_NAME`:$version"
-
+                        foreach ($ver in @("v1", "v2", "v3")) {
+                            Write-Host "Pushing $env:IMAGE_NAME`:$ver to Docker Hub..."
+                            & $env:DOCKER_EXE push "$env:IMAGE_NAME`:$ver"
                             if ($LASTEXITCODE -ne 0) {
-                                throw "Docker push failed for $version."
+                                throw "Docker push failed for tag: $ver"
                             }
                         }
 
+                        Write-Host "Successfully pushed all three image tags to Docker Hub."
                         & $env:DOCKER_EXE logout
                     '''
                 }
+            }
+        }
+
+        stage('Validate Kubernetes Manifests') {
+            steps {
+                powershell '''
+                    $ErrorActionPreference = "Stop"
+                    Write-Host "Validating Kubernetes deployment and service YAML manifests..."
+                    kubectl apply --dry-run=client -f k8s/
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Kubernetes manifest validation failed. Inspect YAML syntax and schemas in k8s/ directory."
+                    }
+                    Write-Host "All Kubernetes manifests in k8s/ are valid and ready for deployment."
+                '''
             }
         }
     }
 
     post {
         success {
-            echo 'SUCCESS: Tests passed and Docker images v1, v2, and v3 were pushed.'
+            echo "SUCCESS: CI/CD pipeline completed all stages successfully! Tests passed, V1/V2/V3 images built and pushed, and Kubernetes manifests validated."
         }
-
         failure {
-            echo 'FAILED: Inspect Console Output for the first failing stage.'
+            echo "FAILED: Review Console Output for the first failing stage."
         }
     }
 }

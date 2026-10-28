@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ version|lower }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Review System - {{ version|upper }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="theme-{{ version|lower }}">
+    <header class="app-header">
+        <div class="header-container">
+            <div class="brand">
+                <span class="brand-icon">★</span>
+                <span class="brand-title">Review System</span>
+                <span class="version-badge version-{{ version|lower }}">{{ version|upper }}</span>
+            </div>
+            <nav class="app-nav">
+                <a href="{{ url_for('home') }}" class="nav-link">Home</a>
+                <a href="{{ url_for('reviews_page') }}" class="nav-link">All Reviews</a>
+                <a href="{{ url_for('health') }}" target="_blank" class="nav-link nav-health">/health</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="app-main">
+        <div class="content-container">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}">
+                                <span class="alert-text">{{ message }}</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <footer class="app-footer">
+        <div class="footer-container">
+            <p><strong>Review System CI/CD Project</strong> &bull; Version: <code>{{ version|lower }}</code> &bull; Running on Flask &bull; Containerized with Docker &bull; Orchestrated via Kubernetes</p>
+            <p class="footer-subtext">Developed by Mokshitha &bull; GitHub: <code>mokshitha31vs-mok/review_system</code></p>
+        </div>
+    </footer>
+</body>
+</html>
